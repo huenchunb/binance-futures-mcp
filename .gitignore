@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Gemini / Agents
+.gemini/
+
+# Project Specific
+specifications/
+.env
+
+# Dependencies
+uv.lock

@@ -1,0 +1,20 @@
+[project]
+name = "binance-futures-mcp"
+version = "0.1.0"
+description = "Binance Futures MCP Server"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    "binance-futures-connector>=3.5.0",
+    "python-binance>=1.0.19",
+    "tenacity>=8.3.0",
+    "pydantic>=2.7.0",
+    "python-dotenv>=1.0.0"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+binance-futures-mcp = "binance_futures_mcp.server:main"
