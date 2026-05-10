@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 class BaseBinanceClient(ABC):
     @abstractmethod
@@ -10,3 +10,14 @@ class BaseBinanceClient(ABC):
         Raises InvalidCredentialsError or BinanceAPIError on failures.
         """
         pass
+
+    @abstractmethod
+    def get_open_positions(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves all open positions from Binance Futures.
+        Must return a list of dictionaries, each containing position details.
+        Only positions with positionAmt != 0 should be returned.
+        Raises InvalidCredentialsError or BinanceAPIError on failures.
+        """
+        pass
+

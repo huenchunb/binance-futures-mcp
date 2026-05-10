@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 from binance.um_futures import UMFutures
 from binance.error import ClientError
 
@@ -44,3 +44,45 @@ class OfficialBinanceClient(BaseBinanceClient):
             raise BinanceAPIError(message=f"Binance Official API Error: {getattr(e, 'error_message', str(e))}", details=str(e))
         except Exception as e:
             raise BinanceAPIError(message=f"Unexpected error: {str(e)}")
+
+    @with_circuit_breaker
+    @with_retry
+    def get_open_positions(self) -> List[Dict[str, Any]]:
+        try:
+            # v3 of the API: positionRisk endpoint
+            response = self.client.get_position_risk()
+            
+            # Filter only active positions (positionAmt != 0)
+            active_positions = [
+                {
+                    "symbol": pos.get("symbol", ""),
+                    "position_side": pos.get("positionSide", "BOTH"),
+                    "position_amount": str(pos.get("positionAmt", "0")),
+                    "entry_price": str(pos.get("entryPrice", "0.0")),
+                    "break_even_price": str(pos.get("breakEvenPrice", "0.0")),
+                    "mark_price": str(pos.get("markPrice", "0.0")),
+                    "liquidation_price": str(pos.get("liquidationPrice", "0.0")),
+                    "leverage": str(pos.get("leverage", "1")),
+                    "unrealized_profit": str(pos.get("unRealizedProfit", "0.0")),
+                    "margin_type": pos.get("marginType", "cross"),
+                    "initial_margin": str(pos.get("initialMargin", "0.0")),
+                    "maint_margin": str(pos.get("maintMargin", "0.0")),
+                    "notional": str(pos.get("notional", "0.0")),
+                    "isolated_margin": str(pos.get("isolatedMargin", "0.0")),
+                    "update_time": int(pos.get("updateTime", 0)),
+                }
+                for pos in response
+                if float(pos.get("positionAmt", 0)) != 0
+            ]
+            
+            return active_positions
+
+        except ClientError as e:
+            status_code = getattr(e, "status_code", 500)
+            if status_code == 401 or getattr(e, "error_code", 0) == -2015:
+                raise InvalidCredentialsError(details=getattr(e, "error_message", str(e)))
+            
+            raise BinanceAPIError(message=f"Binance Official API Error: {getattr(e, 'error_message', str(e))}", details=str(e))
+        except Exception as e:
+            raise BinanceAPIError(message=f"Unexpected error: {str(e)}")
+

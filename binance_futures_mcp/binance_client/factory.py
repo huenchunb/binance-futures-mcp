@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from binance_futures_mcp.binance_client.base import BaseBinanceClient
 from binance_futures_mcp.binance_client.official_client import OfficialBinanceClient
@@ -25,6 +25,17 @@ class ResilientFallbackClient(BaseBinanceClient):
             print(f"Official client failed: {e.message}. Falling back to community client...")
             return self.community_client.get_usdt_balance()
 
+    def get_open_positions(self) -> List[Dict[str, Any]]:
+        try:
+            return self.official_client.get_open_positions()
+        except InvalidCredentialsError as e:
+            # Do not fallback on auth errors, they will fail on the community client anyway
+            raise e
+        except BinanceAPIError as e:
+            # Fallback to community client
+            print(f"Official client failed: {e.message}. Falling back to community client...")
+            return self.community_client.get_open_positions()
+
 class BinanceClientFactory:
     """Factory to instantiate the Binance Client."""
     
@@ -35,3 +46,4 @@ class BinanceClientFactory:
         and falls back to the community library on connection errors.
         """
         return ResilientFallbackClient(api_key, api_secret)
+
