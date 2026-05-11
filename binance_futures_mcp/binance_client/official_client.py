@@ -343,4 +343,115 @@ class OfficialBinanceClient(BaseBinanceClient):
         except Exception as e:
             raise BinanceAPIError(message=f"Unexpected error: {str(e)}")
 
+    def _map_trade(self, trade: Dict[str, Any]) -> Dict[str, Any]:
+        """Maps a raw Binance trade response to the internal model format."""
+        return {
+            "id": int(trade.get("id", 0)),
+            "symbol": trade.get("symbol", ""),
+            "order_id": int(trade.get("orderId", 0)),
+            "side": trade.get("side", ""),
+            "price": str(trade.get("price", "0")),
+            "qty": str(trade.get("qty", "0")),
+            "realized_pnl": str(trade.get("realizedPnl", "0")),
+            "quote_qty": str(trade.get("quoteQty", "0")),
+            "commission": str(trade.get("commission", "0")),
+            "commission_asset": trade.get("commissionAsset", "USDT"),
+            "time": int(trade.get("time", 0)),
+            "buyer": bool(trade.get("buyer", False)),
+            "maker": bool(trade.get("maker", False)),
+            "position_side": trade.get("positionSide", "BOTH"),
+        }
 
+    @with_circuit_breaker
+    @with_retry
+    def query_order(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            response = self.client.query_order(**params)
+            return self._map_order(response)
+
+        except ClientError as e:
+            status_code = getattr(e, "status_code", 500)
+            if status_code == 401 or getattr(e, "error_code", 0) == -2015:
+                raise InvalidCredentialsError(details=getattr(e, "error_message", str(e)))
+            raise BinanceAPIError(message=f"Binance Official API Error: {getattr(e, 'error_message', str(e))}", details=str(e))
+        except Exception as e:
+            raise BinanceAPIError(message=f"Unexpected error: {str(e)}")
+
+    @with_circuit_breaker
+    @with_retry
+    def query_all_orders(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        try:
+            response = self.client.get_all_orders(**params)
+            return [self._map_order(order) for order in response]
+
+        except ClientError as e:
+            status_code = getattr(e, "status_code", 500)
+            if status_code == 401 or getattr(e, "error_code", 0) == -2015:
+                raise InvalidCredentialsError(details=getattr(e, "error_message", str(e)))
+            raise BinanceAPIError(message=f"Binance Official API Error: {getattr(e, 'error_message', str(e))}", details=str(e))
+        except Exception as e:
+            raise BinanceAPIError(message=f"Unexpected error: {str(e)}")
+
+    @with_circuit_breaker
+    @with_retry
+    def query_all_open_orders(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        try:
+            response = self.client.get_open_orders(**params)
+            return [self._map_order(order) for order in response]
+
+        except ClientError as e:
+            status_code = getattr(e, "status_code", 500)
+            if status_code == 401 or getattr(e, "error_code", 0) == -2015:
+                raise InvalidCredentialsError(details=getattr(e, "error_message", str(e)))
+            raise BinanceAPIError(message=f"Binance Official API Error: {getattr(e, 'error_message', str(e))}", details=str(e))
+        except Exception as e:
+            raise BinanceAPIError(message=f"Unexpected error: {str(e)}")
+
+    @with_circuit_breaker
+    @with_retry
+    def query_current_open_order(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            response = self.client.get_open_orders(**params)
+            if isinstance(response, list):
+                if len(response) > 0:
+                    return self._map_order(response[0])
+                return {}
+            return self._map_order(response)
+
+        except ClientError as e:
+            status_code = getattr(e, "status_code", 500)
+            if status_code == 401 or getattr(e, "error_code", 0) == -2015:
+                raise InvalidCredentialsError(details=getattr(e, "error_message", str(e)))
+            raise BinanceAPIError(message=f"Binance Official API Error: {getattr(e, 'error_message', str(e))}", details=str(e))
+        except Exception as e:
+            raise BinanceAPIError(message=f"Unexpected error: {str(e)}")
+
+    @with_circuit_breaker
+    @with_retry
+    def query_force_orders(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        try:
+            response = self.client.force_orders(**params)
+            return [self._map_order(order) for order in response]
+
+        except ClientError as e:
+            status_code = getattr(e, "status_code", 500)
+            if status_code == 401 or getattr(e, "error_code", 0) == -2015:
+                raise InvalidCredentialsError(details=getattr(e, "error_message", str(e)))
+            raise BinanceAPIError(message=f"Binance Official API Error: {getattr(e, 'error_message', str(e))}", details=str(e))
+        except Exception as e:
+            raise BinanceAPIError(message=f"Unexpected error: {str(e)}")
+
+    @with_circuit_breaker
+    @with_retry
+    def query_trade_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        try:
+            response = self.client.get_account_trades(**params)
+            return [self._map_trade(trade) for trade in response]
+
+        except ClientError as e:
+            status_code = getattr(e, "status_code", 500)
+            if status_code == 401 or getattr(e, "error_code", 0) == -2015:
+                raise InvalidCredentialsError(details=getattr(e, "error_message", str(e)))
+            raise BinanceAPIError(message=f"Binance Official API Error: {getattr(e, 'error_message', str(e))}", details=str(e))
+        except Exception as e:
+            raise BinanceAPIError(message=f"Unexpected error: {str(e)}")

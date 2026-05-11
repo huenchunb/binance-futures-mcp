@@ -107,4 +107,50 @@ class BaseBinanceClient(ABC):
         """
         pass
 
+    @abstractmethod
+    def query_order(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Queries a specific order by symbol and orderId or origClientOrderId.
+        Returns a dictionary with the order details.
+        """
+        pass
 
+    @abstractmethod
+    def query_all_orders(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Queries all orders (active, canceled, filled) for a symbol with optional filters.
+        params must include: symbol. Optional: orderId, startTime, endTime, limit.
+        """
+        pass
+
+    @abstractmethod
+    def query_all_open_orders(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Queries all open orders, optionally filtered by symbol.
+        params may include: symbol (optional).
+        """
+        pass
+
+    @abstractmethod
+    def query_current_open_order(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Queries a specific open order by symbol and orderId or origClientOrderId.
+        Returns a dictionary with the order details or empty dict if not found.
+        """
+        pass
+
+    @abstractmethod
+    def query_force_orders(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Queries liquidation/ADL force orders.
+        params may include: symbol, autoCloseType, startTime, endTime, limit.
+        """
+        pass
+
+    @abstractmethod
+    def query_trade_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Queries the account trade list for a symbol.
+        params must include: symbol. Optional: orderId, startTime, endTime, fromId, limit.
+        """
+        pass
