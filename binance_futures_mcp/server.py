@@ -12,6 +12,7 @@ from binance_futures_mcp.models import (
     NewOrderResponse, BatchOrderResult, BatchOrderResponse,
     OrderAmendmentDetail, OrderAmendment, OrderAmendmentResponse,
     CancelOrderResponse, CancelAllOrdersResponse,
+    TradeRecord, TradeListResponse, ForceOrdersResponse,
 )
 
 # Cargar variables de entorno (para desarrollo/pruebas locales)
@@ -570,10 +571,248 @@ def cancel_all_open_orders(symbol: str) -> str:
         return _handle_error(e)
 
 
+# --- Herramientas de Consulta Avanzada de Órdenes y Trades ---
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
+def query_order(
+    symbol: str,
+    orderId: Optional[int] = None,
+    origClientOrderId: Optional[str] = None,
+) -> str:
+    """
+    Consulta el estado de una orden específica en Binance Futures.
+
+    Se debe proporcionar obligatoriamente el símbolo y al menos uno de orderId o
+    origClientOrderId. Órdenes CANCELED o EXPIRED sin trades ejecutados y con más
+    de 3 días de antigüedad no estarán disponibles.
+
+    Parámetro obligatorio: symbol.
+    Identificación: al menos uno de orderId o origClientOrderId.
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        params = {"symbol": symbol}
+        if orderId is not None:
+            params["orderId"] = orderId
+        if origClientOrderId is not None:
+            params["origClientOrderId"] = origClientOrderId
+
+        result = client.query_order(params)
+        order = FuturesOrder(**result)
+        response = OrdersResponse(count=1, query_type="query_order", symbol=symbol, orders=[order])
+        return response.model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
+def query_all_orders(
+    symbol: str,
+    orderId: Optional[int] = None,
+    startTime: Optional[int] = None,
+    endTime: Optional[int] = None,
+    limit: Optional[int] = None,
+) -> str:
+    """
+    Consulta el historial completo de órdenes (activas, canceladas, ejecutadas)
+    de un símbolo en Binance Futures.
+
+    El período de consulta temporal no puede exceder 7 días.
+    Si startTime y endTime no se proporcionan, devuelve las órdenes más recientes.
+
+    Parámetro obligatorio: symbol.
+    Filtros opcionales: orderId (paginar desde un ID), startTime, endTime,
+    limit (default 500, máx 1000).
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        params = {"symbol": symbol}
+        if orderId is not None:
+            params["orderId"] = orderId
+        if startTime is not None:
+            params["startTime"] = startTime
+        if endTime is not None:
+            params["endTime"] = endTime
+        if limit is not None:
+            params["limit"] = limit
+
+        results = client.query_all_orders(params)
+        orders = [FuturesOrder(**order) for order in results]
+        response = OrdersResponse(count=len(orders), query_type="all_orders", symbol=symbol, orders=orders)
+        return response.model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
+def query_all_open_orders(
+    symbol: Optional[str] = None,
+) -> str:
+    """
+    Consulta todas las órdenes abiertas en Binance Futures.
+
+    Si se proporciona symbol, filtra solo ese par (peso API: 1).
+    Sin symbol, devuelve órdenes abiertas de todos los pares (peso API: 40).
+
+    Parámetro opcional: symbol.
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        params = {}
+        if symbol is not None:
+            params["symbol"] = symbol
+
+        results = client.query_all_open_orders(params)
+        orders = [FuturesOrder(**order) for order in results]
+        response = OrdersResponse(count=len(orders), query_type="open_orders", symbol=symbol, orders=orders)
+        return response.model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
+def query_current_open_order(
+    symbol: str,
+    orderId: Optional[int] = None,
+    origClientOrderId: Optional[str] = None,
+) -> str:
+    """
+    Consulta una orden abierta específica en Binance Futures.
+
+    Se debe proporcionar obligatoriamente el símbolo y al menos uno de orderId o
+    origClientOrderId. Si la orden no está abierta o no existe, devuelve un error.
+
+    Parámetro obligatorio: symbol.
+    Identificación: al menos uno de orderId o origClientOrderId.
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        params = {"symbol": symbol}
+        if orderId is not None:
+            params["orderId"] = orderId
+        if origClientOrderId is not None:
+            params["origClientOrderId"] = origClientOrderId
+
+        result = client.query_current_open_order(params)
+        if not result:
+            return ErrorResponse(
+                error=True, code="ORDER_NOT_FOUND",
+                message=f"No se encontró una orden abierta con los identificadores proporcionados en {symbol}."
+            ).model_dump_json()
+
+        order = FuturesOrder(**result)
+        response = OrdersResponse(count=1, query_type="current_open_order", symbol=symbol, orders=[order])
+        return response.model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
+def query_force_orders(
+    symbol: Optional[str] = None,
+    autoCloseType: Optional[str] = None,
+    startTime: Optional[int] = None,
+    endTime: Optional[int] = None,
+    limit: Optional[int] = None,
+) -> str:
+    """
+    Consulta el historial de órdenes de liquidación forzada en Binance Futures.
+
+    Incluye órdenes de liquidación (LIQUIDATION) y auto-deleveraging (ADL).
+    Solo están disponibles datos de los últimos 90 días.
+
+    Parámetros opcionales:
+    - symbol: Filtrar por par de trading.
+    - autoCloseType: LIQUIDATION o ADL.
+    - startTime, endTime: Rango temporal en milisegundos.
+    - limit: Número máximo de resultados (default 50, máx 100).
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        params = {}
+        if symbol is not None:
+            params["symbol"] = symbol
+        if autoCloseType is not None:
+            params["autoCloseType"] = autoCloseType
+        if startTime is not None:
+            params["startTime"] = startTime
+        if endTime is not None:
+            params["endTime"] = endTime
+        if limit is not None:
+            params["limit"] = limit
+
+        results = client.query_force_orders(params)
+        orders = [FuturesOrder(**order) for order in results]
+        response = ForceOrdersResponse(count=len(orders), orders=orders)
+        return response.model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
+def query_trade_list(
+    symbol: str,
+    orderId: Optional[int] = None,
+    startTime: Optional[int] = None,
+    endTime: Optional[int] = None,
+    fromId: Optional[int] = None,
+    limit: Optional[int] = None,
+) -> str:
+    """
+    Consulta el historial de ejecuciones (trades) de un símbolo en Binance Futures.
+
+    Cada trade incluye: precio, cantidad, comisión, PnL realizado, timestamp, y más.
+    Solo están disponibles datos de los últimos 6 meses.
+
+    Parámetro obligatorio: symbol.
+    Filtros opcionales:
+    - orderId: Obtener trades de una orden específica.
+    - startTime, endTime: Rango temporal en milisegundos.
+    - fromId: Paginar desde un trade ID específico.
+    - limit: Número máximo de resultados (default 500, máx 1000).
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        params = {"symbol": symbol}
+        if orderId is not None:
+            params["orderId"] = orderId
+        if startTime is not None:
+            params["startTime"] = startTime
+        if endTime is not None:
+            params["endTime"] = endTime
+        if fromId is not None:
+            params["fromId"] = fromId
+        if limit is not None:
+            params["limit"] = limit
+
+        results = client.query_trade_list(params)
+        trades = [TradeRecord(**trade) for trade in results]
+        response = TradeListResponse(count=len(trades), symbol=symbol, trades=trades)
+        return response.model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
 def main():
     mcp.run()
 
 if __name__ == "__main__":
     main()
-
-
