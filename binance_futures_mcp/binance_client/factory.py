@@ -126,6 +126,60 @@ class ResilientFallbackClient(BaseBinanceClient):
             print(f"Official client failed: {e.message}. Falling back to community client...")
             return self.community_client.cancel_all_open_orders(symbol)
 
+    def query_order(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            return self.official_client.query_order(params)
+        except InvalidCredentialsError as e:
+            raise e
+        except BinanceAPIError as e:
+            print(f"Official client failed: {e.message}. Falling back to community client...")
+            return self.community_client.query_order(params)
+
+    def query_all_orders(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        try:
+            return self.official_client.query_all_orders(params)
+        except InvalidCredentialsError as e:
+            raise e
+        except BinanceAPIError as e:
+            print(f"Official client failed: {e.message}. Falling back to community client...")
+            return self.community_client.query_all_orders(params)
+
+    def query_all_open_orders(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        try:
+            return self.official_client.query_all_open_orders(params)
+        except InvalidCredentialsError as e:
+            raise e
+        except BinanceAPIError as e:
+            print(f"Official client failed: {e.message}. Falling back to community client...")
+            return self.community_client.query_all_open_orders(params)
+
+    def query_current_open_order(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            return self.official_client.query_current_open_order(params)
+        except InvalidCredentialsError as e:
+            raise e
+        except BinanceAPIError as e:
+            print(f"Official client failed: {e.message}. Falling back to community client...")
+            return self.community_client.query_current_open_order(params)
+
+    def query_force_orders(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        try:
+            return self.official_client.query_force_orders(params)
+        except InvalidCredentialsError as e:
+            raise e
+        except BinanceAPIError as e:
+            print(f"Official client failed: {e.message}. Falling back to community client...")
+            return self.community_client.query_force_orders(params)
+
+    def query_trade_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        try:
+            return self.official_client.query_trade_list(params)
+        except InvalidCredentialsError as e:
+            raise e
+        except BinanceAPIError as e:
+            print(f"Official client failed: {e.message}. Falling back to community client...")
+            return self.community_client.query_trade_list(params)
+
 class BinanceClientFactory:
     """Factory to instantiate the Binance Client."""
     
