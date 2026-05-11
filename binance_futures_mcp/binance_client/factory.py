@@ -36,6 +36,24 @@ class ResilientFallbackClient(BaseBinanceClient):
             print(f"Official client failed: {e.message}. Falling back to community client...")
             return self.community_client.get_open_positions()
 
+    def get_open_orders(self) -> List[Dict[str, Any]]:
+        try:
+            return self.official_client.get_open_orders()
+        except InvalidCredentialsError as e:
+            raise e
+        except BinanceAPIError as e:
+            print(f"Official client failed: {e.message}. Falling back to community client...")
+            return self.community_client.get_open_orders()
+
+    def get_all_orders(self, symbol: str) -> List[Dict[str, Any]]:
+        try:
+            return self.official_client.get_all_orders(symbol)
+        except InvalidCredentialsError as e:
+            raise e
+        except BinanceAPIError as e:
+            print(f"Official client failed: {e.message}. Falling back to community client...")
+            return self.community_client.get_all_orders(symbol)
+
 class BinanceClientFactory:
     """Factory to instantiate the Binance Client."""
     
