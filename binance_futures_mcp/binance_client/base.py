@@ -21,3 +21,21 @@ class BaseBinanceClient(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_open_orders(self) -> List[Dict[str, Any]]:
+        """
+        Retrieves all open orders across all symbols from Binance Futures.
+        Must return a list of dictionaries, each containing order details.
+        Raises InvalidCredentialsError or BinanceAPIError on failures.
+        """
+        pass
+
+    @abstractmethod
+    def get_all_orders(self, symbol: str) -> List[Dict[str, Any]]:
+        """
+        Retrieves all orders (open, filled, canceled) for a specific symbol from Binance Futures.
+        Must return a list of dictionaries, each containing order details.
+        Raises InvalidCredentialsError or BinanceAPIError on failures.
+        """
+        pass
+
