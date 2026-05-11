@@ -86,3 +86,57 @@ class OfficialBinanceClient(BaseBinanceClient):
         except Exception as e:
             raise BinanceAPIError(message=f"Unexpected error: {str(e)}")
 
+    def _map_order(self, order: Dict[str, Any]) -> Dict[str, Any]:
+        """Maps a raw Binance order response to the internal model format."""
+        return {
+            "order_id": int(order.get("orderId", 0)),
+            "symbol": order.get("symbol", ""),
+            "type": order.get("type", ""),
+            "side": order.get("side", ""),
+            "position_side": order.get("positionSide", "BOTH"),
+            "status": order.get("status", ""),
+            "price": str(order.get("price", "0")),
+            "stop_price": str(order.get("stopPrice", "0")),
+            "orig_qty": str(order.get("origQty", "0")),
+            "executed_qty": str(order.get("executedQty", "0")),
+            "avg_price": str(order.get("avgPrice", "0")),
+            "reduce_only": bool(order.get("reduceOnly", False)),
+            "close_position": bool(order.get("closePosition", False)),
+            "time_in_force": order.get("timeInForce", "GTC"),
+            "working_type": order.get("workingType", "CONTRACT_PRICE"),
+            "time": int(order.get("time", 0)),
+            "update_time": int(order.get("updateTime", 0)),
+        }
+
+    @with_circuit_breaker
+    @with_retry
+    def get_open_orders(self) -> List[Dict[str, Any]]:
+        try:
+            response = self.client.get_open_orders()
+            return [self._map_order(order) for order in response]
+
+        except ClientError as e:
+            status_code = getattr(e, "status_code", 500)
+            if status_code == 401 or getattr(e, "error_code", 0) == -2015:
+                raise InvalidCredentialsError(details=getattr(e, "error_message", str(e)))
+            
+            raise BinanceAPIError(message=f"Binance Official API Error: {getattr(e, 'error_message', str(e))}", details=str(e))
+        except Exception as e:
+            raise BinanceAPIError(message=f"Unexpected error: {str(e)}")
+
+    @with_circuit_breaker
+    @with_retry
+    def get_all_orders(self, symbol: str) -> List[Dict[str, Any]]:
+        try:
+            response = self.client.get_all_orders(symbol=symbol)
+            return [self._map_order(order) for order in response]
+
+        except ClientError as e:
+            status_code = getattr(e, "status_code", 500)
+            if status_code == 401 or getattr(e, "error_code", 0) == -2015:
+                raise InvalidCredentialsError(details=getattr(e, "error_message", str(e)))
+            
+            raise BinanceAPIError(message=f"Binance Official API Error: {getattr(e, 'error_message', str(e))}", details=str(e))
+        except Exception as e:
+            raise BinanceAPIError(message=f"Unexpected error: {str(e)}")
+
