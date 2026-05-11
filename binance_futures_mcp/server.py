@@ -1,11 +1,12 @@
 import os
 import json
+from typing import Optional
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
 from binance_futures_mcp.binance_client.factory import BinanceClientFactory
 from binance_futures_mcp.errors import BinanceMCPError
-from binance_futures_mcp.models import USDTBalance, ErrorResponse, FuturesPosition, OpenPositionsResponse
+from binance_futures_mcp.models import USDTBalance, ErrorResponse, FuturesPosition, OpenPositionsResponse, FuturesOrder, OrdersResponse
 
 # Cargar variables de entorno (para desarrollo/pruebas locales)
 load_dotenv()
@@ -104,6 +105,73 @@ def get_open_positions() -> str:
         return error_response.model_dump_json()
     except Exception as e:
         # Formatear cualquier otro error inesperado
+        error_response = ErrorResponse(
+            error=True,
+            code="INTERNAL_SERVER_ERROR",
+            message="Ocurrió un error inesperado al procesar la solicitud.",
+            details=str(e)
+        )
+        return error_response.model_dump_json()
+
+@mcp.tool()
+def get_orders(symbol: Optional[str] = None) -> str:
+    """
+    Obtiene las órdenes de la cuenta de Binance Futures del usuario.
+    
+    Comportamiento:
+    - Sin parámetro 'symbol': devuelve todas las órdenes abiertas/pendientes (Stop Loss,
+      Take Profit, Limit, etc.) de TODOS los pares. No incluye órdenes canceladas o ejecutadas.
+    - Con parámetro 'symbol' (ej. 'BTCUSDT'): devuelve el historial completo de órdenes
+      para ese par específico, incluyendo órdenes abiertas, canceladas y ejecutadas.
+    
+    IMPORTANTE: No confundir con posiciones abiertas (get_open_positions).
+    Las órdenes son intenciones de ejecución (SL, TP, Limit) mientras que las
+    posiciones son trades activos en el mercado.
+    """
+    api_key = os.getenv("BINANCE_API_KEY")
+    api_secret = os.getenv("BINANCE_API_SECRET")
+
+    if not api_key or not api_secret:
+        error = ErrorResponse(
+            error=True,
+            code="MISSING_CREDENTIALS",
+            message="Las credenciales de Binance no están configuradas en las variables de entorno."
+        )
+        return error.model_dump_json()
+
+    try:
+        client = BinanceClientFactory.create_client(api_key, api_secret)
+        
+        if symbol:
+            # Historial completo de órdenes para un símbolo específico
+            orders_data = client.get_all_orders(symbol)
+            query_type = "all_orders"
+        else:
+            # Órdenes abiertas/pendientes de todos los pares
+            orders_data = client.get_open_orders()
+            query_type = "open_orders"
+        
+        # Convertir cada orden a modelo Pydantic
+        orders = [FuturesOrder(**order) for order in orders_data]
+        
+        # Formatear la respuesta exitosa
+        success_response = OrdersResponse(
+            count=len(orders),
+            query_type=query_type,
+            symbol=symbol,
+            orders=orders
+        )
+        return success_response.model_dump_json()
+        
+    except BinanceMCPError as e:
+        error_response = ErrorResponse(
+            error=True,
+            code=e.code,
+            message=e.message,
+            details=e.details
+        )
+        return error_response.model_dump_json()
+    except Exception as e:
         error_response = ErrorResponse(
             error=True,
             code="INTERNAL_SERVER_ERROR",
