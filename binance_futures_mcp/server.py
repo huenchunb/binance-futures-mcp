@@ -576,7 +576,7 @@ def cancel_all_open_orders(symbol: str) -> str:
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
 def query_order(
     symbol: str,
-    orderId: Optional[int] = None,
+    orderId: Optional[str] = None,
     origClientOrderId: Optional[str] = None,
 ) -> str:
     """
@@ -594,10 +594,16 @@ def query_order(
         return _missing_credentials_error()
 
     try:
+        if not orderId and not origClientOrderId:
+            return ErrorResponse(
+                error=True, code="VALIDATION_ERROR",
+                message="Debe proporcionar al menos 'orderId' o 'origClientOrderId' para consultar una orden."
+            ).model_dump_json()
+
         params = {"symbol": symbol}
-        if orderId is not None:
+        if orderId:
             params["orderId"] = orderId
-        if origClientOrderId is not None:
+        if origClientOrderId:
             params["origClientOrderId"] = origClientOrderId
 
         result = client.query_order(params)
@@ -611,10 +617,10 @@ def query_order(
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
 def query_all_orders(
     symbol: str,
-    orderId: Optional[int] = None,
-    startTime: Optional[int] = None,
-    endTime: Optional[int] = None,
-    limit: Optional[int] = None,
+    orderId: Optional[str] = None,
+    startTime: Optional[str] = None,
+    endTime: Optional[str] = None,
+    limit: Optional[str] = None,
 ) -> str:
     """
     Consulta el historial completo de órdenes (activas, canceladas, ejecutadas)
@@ -633,13 +639,13 @@ def query_all_orders(
 
     try:
         params = {"symbol": symbol}
-        if orderId is not None:
+        if orderId:
             params["orderId"] = orderId
-        if startTime is not None:
+        if startTime:
             params["startTime"] = startTime
-        if endTime is not None:
+        if endTime:
             params["endTime"] = endTime
-        if limit is not None:
+        if limit:
             params["limit"] = limit
 
         results = client.query_all_orders(params)
@@ -668,7 +674,7 @@ def query_all_open_orders(
 
     try:
         params = {}
-        if symbol is not None:
+        if symbol:
             params["symbol"] = symbol
 
         results = client.query_all_open_orders(params)
@@ -682,7 +688,7 @@ def query_all_open_orders(
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
 def query_current_open_order(
     symbol: str,
-    orderId: Optional[int] = None,
+    orderId: Optional[str] = None,
     origClientOrderId: Optional[str] = None,
 ) -> str:
     """
@@ -699,10 +705,16 @@ def query_current_open_order(
         return _missing_credentials_error()
 
     try:
+        if not orderId and not origClientOrderId:
+            return ErrorResponse(
+                error=True, code="VALIDATION_ERROR",
+                message="Debe proporcionar al menos 'orderId' o 'origClientOrderId' para consultar la orden abierta."
+            ).model_dump_json()
+
         params = {"symbol": symbol}
-        if orderId is not None:
+        if orderId:
             params["orderId"] = orderId
-        if origClientOrderId is not None:
+        if origClientOrderId:
             params["origClientOrderId"] = origClientOrderId
 
         result = client.query_current_open_order(params)
@@ -723,9 +735,9 @@ def query_current_open_order(
 def query_force_orders(
     symbol: Optional[str] = None,
     autoCloseType: Optional[str] = None,
-    startTime: Optional[int] = None,
-    endTime: Optional[int] = None,
-    limit: Optional[int] = None,
+    startTime: Optional[str] = None,
+    endTime: Optional[str] = None,
+    limit: Optional[str] = None,
 ) -> str:
     """
     Consulta el historial de órdenes de liquidación forzada en Binance Futures.
@@ -745,15 +757,15 @@ def query_force_orders(
 
     try:
         params = {}
-        if symbol is not None:
+        if symbol:
             params["symbol"] = symbol
-        if autoCloseType is not None:
+        if autoCloseType:
             params["autoCloseType"] = autoCloseType
-        if startTime is not None:
+        if startTime:
             params["startTime"] = startTime
-        if endTime is not None:
+        if endTime:
             params["endTime"] = endTime
-        if limit is not None:
+        if limit:
             params["limit"] = limit
 
         results = client.query_force_orders(params)
@@ -767,11 +779,11 @@ def query_force_orders(
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
 def query_trade_list(
     symbol: str,
-    orderId: Optional[int] = None,
-    startTime: Optional[int] = None,
-    endTime: Optional[int] = None,
-    fromId: Optional[int] = None,
-    limit: Optional[int] = None,
+    orderId: Optional[str] = None,
+    startTime: Optional[str] = None,
+    endTime: Optional[str] = None,
+    fromId: Optional[str] = None,
+    limit: Optional[str] = None,
 ) -> str:
     """
     Consulta el historial de ejecuciones (trades) de un símbolo en Binance Futures.
@@ -792,15 +804,15 @@ def query_trade_list(
 
     try:
         params = {"symbol": symbol}
-        if orderId is not None:
+        if orderId:
             params["orderId"] = orderId
-        if startTime is not None:
+        if startTime:
             params["startTime"] = startTime
-        if endTime is not None:
+        if endTime:
             params["endTime"] = endTime
-        if fromId is not None:
+        if fromId:
             params["fromId"] = fromId
-        if limit is not None:
+        if limit:
             params["limit"] = limit
 
         results = client.query_trade_list(params)
