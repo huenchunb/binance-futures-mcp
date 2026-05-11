@@ -128,3 +128,30 @@ class CancelAllOrdersResponse(BaseModel):
     code: int = Field(description="Código de respuesta de Binance (200 = éxito)")
     message: str = Field(description="Mensaje de respuesta")
 
+# --- Modelos para Consultas Avanzadas de Órdenes y Trades ---
+
+class TradeRecord(BaseModel):
+    id: int = Field(description="ID único del trade")
+    symbol: str = Field(description="Par de trading (ej. BTCUSDT)")
+    order_id: int = Field(description="ID de la orden que generó este trade")
+    side: str = Field(description="Lado del trade: BUY o SELL")
+    price: str = Field(description="Precio de ejecución del trade")
+    qty: str = Field(description="Cantidad ejecutada en el trade")
+    realized_pnl: str = Field(default="0", description="PnL realizado en este trade")
+    quote_qty: str = Field(default="0", description="Cantidad en moneda cotizada (USDT)")
+    commission: str = Field(default="0", description="Comisión cobrada por el trade")
+    commission_asset: str = Field(default="USDT", description="Activo en el que se cobró la comisión")
+    time: int = Field(description="Timestamp del trade en milisegundos")
+    buyer: bool = Field(description="Si el trade fue como comprador")
+    maker: bool = Field(description="Si el trade fue como maker (no taker)")
+    position_side: str = Field(default="BOTH", description="Lado de la posición: BOTH, LONG, SHORT")
+
+class TradeListResponse(BaseModel):
+    count: int = Field(description="Número de trades devueltos")
+    symbol: str = Field(description="Símbolo consultado")
+    trades: List[TradeRecord] = Field(description="Lista de trades ejecutados")
+
+class ForceOrdersResponse(BaseModel):
+    count: int = Field(description="Número de órdenes de liquidación forzada devueltas")
+    orders: List[FuturesOrder] = Field(description="Lista de órdenes de liquidación forzada")
+
