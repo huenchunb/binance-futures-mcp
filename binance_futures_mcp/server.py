@@ -6,7 +6,13 @@ from mcp.server.fastmcp import FastMCP
 
 from binance_futures_mcp.binance_client.factory import BinanceClientFactory
 from binance_futures_mcp.errors import BinanceMCPError
-from binance_futures_mcp.models import USDTBalance, ErrorResponse, FuturesPosition, OpenPositionsResponse, FuturesOrder, OrdersResponse
+from binance_futures_mcp.models import (
+    USDTBalance, ErrorResponse, FuturesPosition, OpenPositionsResponse,
+    FuturesOrder, OrdersResponse,
+    NewOrderResponse, BatchOrderResult, BatchOrderResponse,
+    OrderAmendmentDetail, OrderAmendment, OrderAmendmentResponse,
+    CancelOrderResponse, CancelAllOrdersResponse,
+)
 
 # Cargar variables de entorno (para desarrollo/pruebas locales)
 load_dotenv()
@@ -180,9 +186,394 @@ def get_orders(symbol: Optional[str] = None) -> str:
         )
         return error_response.model_dump_json()
 
+
+# --- Herramientas de Gestión de Órdenes ---
+
+def _get_client():
+    """Helper para validar credenciales y obtener el cliente."""
+    api_key = os.getenv("BINANCE_API_KEY")
+    api_secret = os.getenv("BINANCE_API_SECRET")
+    if not api_key or not api_secret:
+        return None
+    return BinanceClientFactory.create_client(api_key, api_secret)
+
+def _missing_credentials_error() -> str:
+    return ErrorResponse(
+        error=True,
+        code="MISSING_CREDENTIALS",
+        message="Las credenciales de Binance no están configuradas en las variables de entorno."
+    ).model_dump_json()
+
+def _handle_error(e: Exception) -> str:
+    if isinstance(e, BinanceMCPError):
+        return ErrorResponse(error=True, code=e.code, message=e.message, details=e.details).model_dump_json()
+    return ErrorResponse(error=True, code="INTERNAL_SERVER_ERROR", message="Ocurrió un error inesperado.", details=str(e)).model_dump_json()
+
+
+@mcp.tool(annotations={"destructiveHint": True, "openWorldHint": True})
+def create_order(
+    symbol: str,
+    side: str,
+    type: str,
+    positionSide: str,
+    quantity: Optional[str] = None,
+    price: Optional[str] = None,
+    stopPrice: Optional[str] = None,
+    timeInForce: Optional[str] = None,
+    reduceOnly: Optional[bool] = None,
+    closePosition: Optional[bool] = None,
+    workingType: Optional[str] = None,
+    newClientOrderId: Optional[str] = None,
+) -> str:
+    """
+    Crea una nueva orden en Binance Futures.
+
+    ⚠️ CONFIRMACIÓN REQUERIDA: Antes de ejecutar esta herramienta, SIEMPRE debes
+    confirmar la acción con el usuario mostrando un resumen de la operación
+    (símbolo, lado, tipo, cantidad, precio) y esperando su aprobación explícita.
+
+    Parámetros obligatorios:
+    - symbol: Par de trading (ej. BTCUSDT)
+    - side: BUY o SELL
+    - type: LIMIT, MARKET, STOP, STOP_MARKET, TAKE_PROFIT, TAKE_PROFIT_MARKET, TRAILING_STOP_MARKET
+    - positionSide: LONG, SHORT o BOTH
+
+    Parámetros condicionales según tipo:
+    - LIMIT: requiere quantity, price, timeInForce
+    - MARKET: requiere quantity
+    - STOP/TAKE_PROFIT: requiere quantity, price, stopPrice
+    - STOP_MARKET/TAKE_PROFIT_MARKET: requiere stopPrice (quantity opcional si closePosition=true)
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        params = {"symbol": symbol, "side": side, "type": type, "positionSide": positionSide}
+        if quantity is not None:
+            params["quantity"] = quantity
+        if price is not None:
+            params["price"] = price
+        if stopPrice is not None:
+            params["stopPrice"] = stopPrice
+        if timeInForce is not None:
+            params["timeInForce"] = timeInForce
+        if reduceOnly is not None:
+            params["reduceOnly"] = str(reduceOnly).lower()
+        if closePosition is not None:
+            params["closePosition"] = str(closePosition).lower()
+        if workingType is not None:
+            params["workingType"] = workingType
+        if newClientOrderId is not None:
+            params["newClientOrderId"] = newClientOrderId
+
+        result = client.create_order(params)
+        response = NewOrderResponse(**result)
+        return response.model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"destructiveHint": True, "openWorldHint": True})
+def create_batch_orders(orders: str) -> str:
+    """
+    Crea múltiples órdenes en Binance Futures en una sola invocación (máximo 5).
+
+    ⚠️ CONFIRMACIÓN REQUERIDA: Antes de ejecutar esta herramienta, SIEMPRE debes
+    confirmar la acción con el usuario mostrando un resumen de TODAS las órdenes
+    y esperando su aprobación explícita.
+
+    Parámetro:
+    - orders: JSON string con lista de hasta 5 órdenes. Cada orden debe contener:
+      symbol, side, type, positionSide, y parámetros adicionales según el tipo.
+
+    Ejemplo: '[{"symbol":"BTCUSDT","side":"BUY","type":"LIMIT","positionSide":"LONG",
+    "quantity":"0.001","price":"50000","timeInForce":"GTC"}]'
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        orders_list = json.loads(orders)
+        if len(orders_list) > 5:
+            return ErrorResponse(
+                error=True, code="VALIDATION_ERROR",
+                message="El máximo permitido es 5 órdenes por batch."
+            ).model_dump_json()
+
+        results_data = client.create_batch_orders(orders_list)
+        results = []
+        successful = 0
+        failed = 0
+        for item in results_data:
+            if item.get("success"):
+                successful += 1
+                results.append(BatchOrderResult(success=True, order=NewOrderResponse(**item["order"])))
+            else:
+                failed += 1
+                results.append(BatchOrderResult(
+                    success=False,
+                    error_code=item.get("error_code", "UNKNOWN"),
+                    error_message=item.get("error_message", "Unknown error")
+                ))
+
+        response = BatchOrderResponse(total=len(results), successful=successful, failed=failed, results=results)
+        return response.model_dump_json()
+    except json.JSONDecodeError:
+        return ErrorResponse(error=True, code="VALIDATION_ERROR", message="El parámetro 'orders' no es un JSON válido.").model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"destructiveHint": True, "openWorldHint": True})
+def modify_order(
+    symbol: str,
+    side: str,
+    quantity: str,
+    price: str,
+    orderId: Optional[int] = None,
+    origClientOrderId: Optional[str] = None,
+) -> str:
+    """
+    Modifica una orden LIMIT existente en Binance Futures.
+
+    ⚠️ CONFIRMACIÓN REQUERIDA: Antes de ejecutar esta herramienta, SIEMPRE debes
+    confirmar la acción con el usuario mostrando los cambios propuestos
+    (nueva cantidad, nuevo precio) y esperando su aprobación explícita.
+
+    Solo se pueden modificar órdenes de tipo LIMIT. La orden será reordenada
+    en la cola de matching de Binance.
+
+    Parámetros obligatorios: symbol, side, quantity, price.
+    Identificación: al menos uno de orderId o origClientOrderId.
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        params = {"symbol": symbol, "side": side, "quantity": quantity, "price": price}
+        if orderId is not None:
+            params["orderId"] = orderId
+        if origClientOrderId is not None:
+            params["origClientOrderId"] = origClientOrderId
+
+        result = client.modify_order(params)
+        response = NewOrderResponse(**result)
+        return response.model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"destructiveHint": True, "openWorldHint": True})
+def modify_batch_orders(orders: str) -> str:
+    """
+    Modifica múltiples órdenes LIMIT en Binance Futures (máximo 5).
+
+    ⚠️ CONFIRMACIÓN REQUERIDA: Antes de ejecutar esta herramienta, SIEMPRE debes
+    confirmar la acción con el usuario mostrando un resumen de TODAS las
+    modificaciones y esperando su aprobación explícita.
+
+    Parámetro:
+    - orders: JSON string con lista de hasta 5 modificaciones. Cada una debe
+      contener: symbol, side, quantity, price, y orderId o origClientOrderId.
+
+    Ejemplo: '[{"symbol":"BTCUSDT","side":"BUY","orderId":12345,"quantity":"0.002","price":"51000"}]'
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        orders_list = json.loads(orders)
+        if len(orders_list) > 5:
+            return ErrorResponse(
+                error=True, code="VALIDATION_ERROR",
+                message="El máximo permitido es 5 modificaciones por batch."
+            ).model_dump_json()
+
+        results_data = client.modify_batch_orders(orders_list)
+        results = []
+        successful = 0
+        failed = 0
+        for item in results_data:
+            if item.get("success"):
+                successful += 1
+                results.append(BatchOrderResult(success=True, order=NewOrderResponse(**item["order"])))
+            else:
+                failed += 1
+                results.append(BatchOrderResult(
+                    success=False,
+                    error_code=item.get("error_code", "UNKNOWN"),
+                    error_message=item.get("error_message", "Unknown error")
+                ))
+
+        response = BatchOrderResponse(total=len(results), successful=successful, failed=failed, results=results)
+        return response.model_dump_json()
+    except json.JSONDecodeError:
+        return ErrorResponse(error=True, code="VALIDATION_ERROR", message="El parámetro 'orders' no es un JSON válido.").model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
+def get_order_modification_history(
+    symbol: str,
+    orderId: Optional[int] = None,
+    origClientOrderId: Optional[str] = None,
+    startTime: Optional[int] = None,
+    endTime: Optional[int] = None,
+    limit: Optional[int] = None,
+) -> str:
+    """
+    Consulta el historial de modificaciones de órdenes en Binance Futures.
+
+    El historial está disponible para un máximo de 3 meses.
+
+    Parámetro obligatorio: symbol.
+    Filtros opcionales: orderId, origClientOrderId, startTime, endTime, limit (default 50, máx 100).
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        params = {"symbol": symbol}
+        if orderId is not None:
+            params["orderId"] = orderId
+        if origClientOrderId is not None:
+            params["origClientOrderId"] = origClientOrderId
+        if startTime is not None:
+            params["startTime"] = startTime
+        if endTime is not None:
+            params["endTime"] = endTime
+        if limit is not None:
+            params["limit"] = limit
+
+        results_data = client.get_order_modify_history(params)
+        amendments = [OrderAmendment(
+            amendment_id=item["amendment_id"],
+            symbol=item["symbol"],
+            order_id=item["order_id"],
+            client_order_id=item["client_order_id"],
+            time=item["time"],
+            price_change=OrderAmendmentDetail(**item["price_change"]),
+            qty_change=OrderAmendmentDetail(**item["qty_change"]),
+            amendment_count=item["amendment_count"],
+        ) for item in results_data]
+
+        response = OrderAmendmentResponse(count=len(amendments), amendments=amendments)
+        return response.model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"destructiveHint": True, "openWorldHint": True})
+def cancel_order(
+    symbol: str,
+    orderId: Optional[int] = None,
+    origClientOrderId: Optional[str] = None,
+) -> str:
+    """
+    Cancela una orden activa en Binance Futures.
+
+    ⚠️ CONFIRMACIÓN REQUERIDA: Antes de ejecutar esta herramienta, SIEMPRE debes
+    confirmar la acción con el usuario indicando qué orden se va a cancelar
+    y esperando su aprobación explícita.
+
+    Parámetro obligatorio: symbol.
+    Identificación: al menos uno de orderId o origClientOrderId.
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        result = client.cancel_order(symbol, order_id=orderId, orig_client_order_id=origClientOrderId)
+        response = CancelOrderResponse(**result)
+        return response.model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"destructiveHint": True, "openWorldHint": True})
+def cancel_batch_orders(symbol: str, orderIdList: str) -> str:
+    """
+    Cancela múltiples órdenes en Binance Futures (máximo 10).
+
+    ⚠️ CONFIRMACIÓN REQUERIDA: Antes de ejecutar esta herramienta, SIEMPRE debes
+    confirmar la acción con el usuario mostrando las órdenes que se van a cancelar
+    y esperando su aprobación explícita.
+
+    Parámetros:
+    - symbol: Par de trading (ej. BTCUSDT)
+    - orderIdList: JSON string con lista de IDs de órdenes a cancelar (máx 10).
+      Ejemplo: '[12345, 67890, 11111]'
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        id_list = json.loads(orderIdList)
+        if len(id_list) > 10:
+            return ErrorResponse(
+                error=True, code="VALIDATION_ERROR",
+                message="El máximo permitido es 10 órdenes por batch de cancelación."
+            ).model_dump_json()
+
+        results_data = client.cancel_batch_orders(symbol, id_list)
+        results = []
+        successful = 0
+        failed = 0
+        for item in results_data:
+            if item.get("success"):
+                successful += 1
+                results.append(BatchOrderResult(success=True, order=NewOrderResponse(**item["order"])))
+            else:
+                failed += 1
+                results.append(BatchOrderResult(
+                    success=False,
+                    error_code=item.get("error_code", "UNKNOWN"),
+                    error_message=item.get("error_message", "Unknown error")
+                ))
+
+        response = BatchOrderResponse(total=len(results), successful=successful, failed=failed, results=results)
+        return response.model_dump_json()
+    except json.JSONDecodeError:
+        return ErrorResponse(error=True, code="VALIDATION_ERROR", message="El parámetro 'orderIdList' no es un JSON válido.").model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool(annotations={"destructiveHint": True, "openWorldHint": True})
+def cancel_all_open_orders(symbol: str) -> str:
+    """
+    Cancela TODAS las órdenes abiertas de un símbolo específico en Binance Futures.
+
+    ⚠️ CONFIRMACIÓN REQUERIDA: Antes de ejecutar esta herramienta, SIEMPRE debes
+    confirmar la acción con el usuario indicando que se cancelarán TODAS las órdenes
+    abiertas del símbolo especificado y esperando su aprobación explícita.
+
+    Parámetro obligatorio: symbol (ej. BTCUSDT).
+    """
+    client = _get_client()
+    if not client:
+        return _missing_credentials_error()
+
+    try:
+        result = client.cancel_all_open_orders(symbol)
+        response = CancelAllOrdersResponse(**result)
+        return response.model_dump_json()
+    except Exception as e:
+        return _handle_error(e)
+
+
 def main():
     mcp.run()
 
 if __name__ == "__main__":
     main()
+
 
